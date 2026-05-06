@@ -13,9 +13,20 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from ..topology import Topology, build_reference_topology
+from .layout_store import clear_layout, read_layout, write_layout
 from .serialize import serialize_topology
+
+
+class _Position(BaseModel):
+    x: float
+    y: float
+
+
+class _LayoutPayload(BaseModel):
+    positions: dict[str, _Position] = Field(default_factory=dict)
 
 # frontend/dist is produced by `npm run build` in the frontend/ directory.
 # We resolve it relative to the repo root, which is two levels up from this file.
@@ -35,6 +46,23 @@ def create_app(topology: Topology | None = None) -> FastAPI:
     @app.get("/api/health")
     def health() -> dict:
         return {"status": "ok", "milestone": "M1"}
+
+    @app.get("/api/layout")
+    def get_layout() -> dict:
+        """Return saved per-node positions. Empty dict if nothing saved."""
+        return read_layout()
+
+    @app.post("/api/layout")
+    def save_layout(payload: _LayoutPayload) -> dict:
+        """Persist per-node positions sent from the canvas."""
+        write_layout(payload.model_dump())
+        return {"saved": True, "count": len(payload.positions)}
+
+    @app.delete("/api/layout")
+    def reset_layout() -> dict:
+        """Delete the saved layout so the canvas falls back to defaults."""
+        removed = clear_layout()
+        return {"reset": True, "removed": removed}
 
     if _FRONTEND_DIST.is_dir():
         # html=True makes the mount serve index.html for "/" — single-page app.

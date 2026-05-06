@@ -1,16 +1,15 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import cytoscape from "cytoscape";
 import type { Core, ElementDefinition } from "cytoscape";
 import expandCollapse from "cytoscape-expand-collapse";
 
-import type { TopologyResponse } from "../api";
+import type { SavedPositions, TopologyResponse } from "../api";
 import { buildStylesheet } from "./style";
 import { buildParentMap, COLLAPSED_BY_DEFAULT_TYPES } from "./parents";
 import { computePositions } from "./layout";
 
 cytoscape.use(expandCollapse);
 
-// Minimal subset of the expand-collapse plugin's API surface that we use.
 interface ExpandCollapseApi {
   collapse: (nodes: cytoscape.NodeCollection) => void;
   expand: (nodes: cytoscape.NodeCollection | cytoscape.NodeSingular) => void;
@@ -18,16 +17,8 @@ interface ExpandCollapseApi {
   isExpandable: (n: cytoscape.NodeSingular) => boolean;
 }
 
-// Edges that just express "X is part of compound Y" — already encoded via
-// Cytoscape's parent field, so don't draw them as edges too.
-const COMPOUND_RELS = new Set<string>([
-  "has_port",
-  "has_pnic",
-  "has_tep",
-]);
+const COMPOUND_RELS = new Set<string>(["has_port", "has_pnic", "has_tep"]);
 
-// Visually noisy edges hidden in M1; M2 will surface them on hover or in
-// the in-context detail panel.
 const HIDDEN_EDGE_RELS = new Set<string>([
   "encapsulated_by",
   "in_pair",
@@ -42,23 +33,45 @@ const HIDDEN_EDGE_RELS = new Set<string>([
   "hosts_vm",
 ]);
 
-// Node types skipped entirely in M1 — they sit between two parents and
-// don't read as a chip on their own. Reappear in M2 with proper context.
-const HIDDEN_NODE_TYPES = new Set<string>([
-  "tep_pair",
-  "bgp_session",
-]);
+const HIDDEN_NODE_TYPES = new Set<string>(["tep_pair", "bgp_session"]);
+
+export interface CanvasHandle {
+  /** Read every node's current position — used by the Save button. */
+  getPositions(): SavedPositions;
+}
 
 interface CanvasProps {
   topology: TopologyResponse;
+  /** User-saved positions; override the computed layout for matching ids. */
+  savedPositions: SavedPositions;
 }
 
-export function Canvas({ topology }: CanvasProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
+export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
+  { topology, savedPositions },
+  ref,
+) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<Core | null>(null);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      getPositions(): SavedPositions {
+        const cy = cyRef.current;
+        if (!cy) return {};
+        const out: SavedPositions = {};
+        cy.nodes().forEach((n) => {
+          const p = n.position();
+          out[n.id()] = { x: p.x, y: p.y };
+        });
+        return out;
+      },
+    }),
+    [],
+  );
+
   useEffect(() => {
-    if (!ref.current) return;
+    if (!containerRef.current) return;
 
     const visibleNodes = topology.nodes.filter(
       (n) => !HIDDEN_NODE_TYPES.has(n.type),
@@ -74,7 +87,14 @@ export function Canvas({ topology }: CanvasProps) {
     );
 
     const parentMap = buildParentMap(topology.edges);
-    const positions = computePositions(visibleNodes, topology.edges);
+    const computed = computePositions(visibleNodes, topology.edges);
+
+    // Saved positions win over computed ones — that's the whole point of
+    // the Save button. Unknown ids in savedPositions are ignored silently.
+    const positions: SavedPositions = { ...computed };
+    for (const [id, p] of Object.entries(savedPositions)) {
+      if (visibleNodeIds.has(id)) positions[id] = p;
+    }
 
     const elements: ElementDefinition[] = [
       ...visibleNodes.map((n) => ({
@@ -100,7 +120,7 @@ export function Canvas({ topology }: CanvasProps) {
     ];
 
     const cy = cytoscape({
-      container: ref.current,
+      container: containerRef.current,
       elements,
       style: buildStylesheet(),
       layout: { name: "preset" },
@@ -113,8 +133,6 @@ export function Canvas({ topology }: CanvasProps) {
     const api = (
       cy as unknown as { expandCollapse: (o: object) => ExpandCollapseApi }
     ).expandCollapse({
-      // preset keeps positions stable on collapse/expand — our layout
-      // deliberately places children inside the parent's natural area.
       layoutBy: { name: "preset" },
       fisheye: false,
       animate: false,
@@ -143,7 +161,7 @@ export function Canvas({ topology }: CanvasProps) {
       cy.destroy();
       cyRef.current = null;
     };
-  }, [topology]);
+  }, [topology, savedPositions]);
 
-  return <div ref={ref} className="cy-canvas" />;
-}
+  return <div ref={containerRef} className="cy-canvas" />;
+});

@@ -34,3 +34,34 @@ export async function fetchTopology(): Promise<TopologyResponse> {
   }
   return res.json();
 }
+
+// Persisted node positions. The backend stores these under
+// ~/.netsimu/web_layout.json (or NETSIMU_LAYOUT_PATH).
+export type SavedPositions = Record<string, { x: number; y: number }>;
+
+interface LayoutResponse {
+  positions?: SavedPositions;
+}
+
+export async function fetchLayout(): Promise<SavedPositions> {
+  const res = await fetch("/api/layout");
+  if (!res.ok) throw new Error(`GET /api/layout failed: ${res.status}`);
+  const body = (await res.json()) as LayoutResponse;
+  return body.positions ?? {};
+}
+
+export async function saveLayout(positions: SavedPositions): Promise<number> {
+  const res = await fetch("/api/layout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ positions }),
+  });
+  if (!res.ok) throw new Error(`POST /api/layout failed: ${res.status}`);
+  const body = (await res.json()) as { count: number };
+  return body.count;
+}
+
+export async function resetLayout(): Promise<void> {
+  const res = await fetch("/api/layout", { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /api/layout failed: ${res.status}`);
+}
