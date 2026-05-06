@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netops-sim"
+version = "0.1.0"
+description = "Pure-software simulator for VCF/NSX + multi-vendor underlay topologies"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "mandnArgiTech" }]
+license = { text = "TBD" }
+keywords = ["nsx", "vcf", "netops", "simulator", "rca", "observability"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = [
+    "networkx>=3.2",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "numpy>=1.26",
+    "anyio>=4.3",
+    "websockets>=12.0",
+    "rich>=13.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.9",
+]
+
+[project.scripts]
+netsimu = "netops_sim.runner:main"
+netsimu-replay = "netops_sim.replay:main"
+netsimu-grade = "netops_sim.grading:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["netops_sim*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
