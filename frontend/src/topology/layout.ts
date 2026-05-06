@@ -1,93 +1,233 @@
-// Layered preset layout for M1.
+// Strict hierarchical preset layout for M1.
 //
-// We compute (x, y) per node ourselves rather than letting a force-directed
-// layout decide. Reason: the lab's pedagogical promise is "you can SEE the
-// layers". A force layout produces clouds; we want bands. cytoscape-dagre is
-// pinned for M2+ when sub-views (in-context, packet-flow paths) need it.
+// Mirrors the tree the user drew:
+//   spines (top)
+//   ToRs
+//   ESX hosts (compound — wraps pNICs, TEPs)
+//   NSX overlay (T0, TGW, NSX project, NSX edges)
+//   VPCs
+//   Segments + DFW rules
+//   VMs (anchored to runs_on host)
+//   Applications (anchored to consumed VMs) (bottom)
+//
+// Hidden in M1 (re-introduced in M2 with proper context):
+//   bgp_session, tep_pair — they sit between two parents, no clean rank.
+//
+// Compound parents:
+//   host  → pnics, teps (visible only when host expanded)
+//   switch → switch_ports (visible only when switch expanded)
 
-import type { TopoNode } from "../api";
-
-// Vertical band centres, top-to-bottom. CLAUDE.md: applications at top,
-// physical at bottom (overlay floats between application and physical;
-// underlay is the literal bottom).
-const LAYER_Y: Record<string, number> = {
-  application: 120,
-  overlay: 420,
-  physical: 820,
-  underlay: 1100,
-};
-
-// Sub-row index within a band — lets multiple types stack inside one layer.
-// Lower numbers are higher on screen.
-const TYPE_SUBROW: Record<string, number> = {
-  // application
-  application: 0,
-  vm: 1,
-
-  // overlay (logical hierarchy: project at top, then VPC/segment, then
-  // edge plumbing, then TEPs)
-  nsx_project: 0,
-  transit_gateway: 0,
-  vpc: 1,
-  segment: 2,
-  dfw_rule: 2,
-  tier0: 3,
-  nsx_edge: 3,
-  tep: 4,
-  tep_pair: 5,
-
-  // physical (hosts above their pNICs)
-  esx_host: 0,
-  pnic: 1,
-
-  // underlay (spines + ToRs share the switch row, BGP under that, ports
-  // last so they spread along the bottom)
-  switch: 0,
-  bgp_session: 1,
-  switch_port: 2,
-};
-
-const SUB_ROW_GAP = 90;
-const NODE_X_SPACING = 130;
-const VIEWPORT_CENTER_X = 820;
-const MAX_ROW_WIDTH = 1700;
+import type { TopoEdge, TopoNode } from "../api";
 
 export interface Position {
   x: number;
   y: number;
 }
 
-export function computePositions(nodes: TopoNode[]): Record<string, Position> {
-  // Bucket by (layer, type) — each bucket lays out as one or more rows.
-  const buckets = new Map<string, TopoNode[]>();
-  for (const n of nodes) {
-    const key = `${n.layer}::${n.type}`;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key)!.push(n);
+// Canvas main column.
+const W = { left: 140, right: 1880 };
+
+// Vertical ranks (top → bottom).
+const Y = {
+  spine: 100,
+  tor: 320,
+  host: 580,
+  nsxRow1: 800, // T0, TGW, NSX project, NSX edges
+  vpc: 940,
+  segDfwRow: 1080, // segments + DFW rules
+  vm: 1220,
+  app: 1360,
+};
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+function spread(count: number, leftEdge: number, rightEdge: number): number[] {
+  if (count <= 0) return [];
+  if (count === 1) return [(leftEdge + rightEdge) / 2];
+  const step = (rightEdge - leftEdge) / (count - 1);
+  return Array.from({ length: count }, (_, i) => leftEdge + i * step);
+}
+
+function avg(xs: number[]): number {
+  return xs.reduce((s, v) => s + v, 0) / xs.length;
+}
+
+// ── Main entry ──────────────────────────────────────────────────────────
+export function computePositions(
+  nodes: TopoNode[],
+  edges: TopoEdge[],
+): Record<string, Position> {
+  // Parent maps from edges.
+  const hostOfPnic = new Map<string, string>();
+  const hostOfTep = new Map<string, string>();
+  const hostOfVm = new Map<string, string>();
+  const switchOfPort = new Map<string, string>();
+  const vmsOfApp = new Map<string, string[]>();
+
+  for (const e of edges) {
+    if (e.rel === "has_pnic") hostOfPnic.set(e.target, e.source);
+    else if (e.rel === "has_tep") hostOfTep.set(e.target, e.source);
+    else if (e.rel === "runs_on") hostOfVm.set(e.source, e.target);
+    else if (e.rel === "has_port") switchOfPort.set(e.target, e.source);
+    else if (e.rel === "consists_of") {
+      const arr = vmsOfApp.get(e.source) ?? [];
+      arr.push(e.target);
+      vmsOfApp.set(e.source, arr);
+    }
   }
 
-  const positions: Record<string, Position> = {};
-  const perRow = Math.max(1, Math.floor(MAX_ROW_WIDTH / NODE_X_SPACING));
+  const pos: Record<string, Position> = {};
 
-  for (const [key, group] of buckets.entries()) {
-    const [layer, type] = key.split("::");
-    const yBase = LAYER_Y[layer] ?? 500;
-    const subRow = TYPE_SUBROW[type] ?? 0;
+  // ── Spines (top) ──
+  const spines = nodes
+    .filter((n) => n.type === "switch" && n.attrs?.role === "spine")
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const spineXs = spread(spines.length, W.left + 350, W.right - 350);
+  spines.forEach((n, i) => {
+    pos[n.id] = { x: spineXs[i], y: Y.spine };
+  });
 
-    // Deterministic order — alphabetical by id keeps spine-01 left of spine-02.
-    group.sort((a, b) => a.id.localeCompare(b.id));
+  // ── ToRs ──
+  const tors = nodes
+    .filter((n) => n.type === "switch" && n.attrs?.role === "tor")
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const torXs = spread(tors.length, W.left + 150, W.right - 150);
+  tors.forEach((n, i) => {
+    pos[n.id] = { x: torXs[i], y: Y.tor };
+  });
 
-    group.forEach((n, i) => {
-      const wrapRow = Math.floor(i / perRow);
+  // ── Hosts (8 in a row) ──
+  const hosts = nodes
+    .filter((n) => n.type === "esx_host")
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const hostXs = spread(hosts.length, W.left + 50, W.right - 50);
+  hosts.forEach((n, i) => {
+    pos[n.id] = { x: hostXs[i], y: Y.host };
+  });
+
+  // ── pNICs and TEPs inside their host (small offset within parent) ──
+  for (const n of nodes) {
+    if (n.type === "pnic") {
+      const h = hostOfPnic.get(n.id);
+      if (h && pos[h]) {
+        const left = n.id.endsWith("vmnic0");
+        pos[n.id] = { x: pos[h].x + (left ? -45 : 45), y: pos[h].y + 22 };
+      }
+    } else if (n.type === "tep") {
+      const h = hostOfTep.get(n.id);
+      if (h && pos[h]) {
+        pos[n.id] = { x: pos[h].x, y: pos[h].y - 24 };
+      }
+    }
+  }
+
+  // ── Switch ports clustered tight to parent ──
+  // Spines have 4 ports, ToRs have 6. Place them in 1-2 rows directly under
+  // the parent so the compound box stays compact when expanded.
+  const portsByParent = new Map<string, TopoNode[]>();
+  for (const n of nodes) {
+    if (n.type !== "switch_port") continue;
+    const sw = switchOfPort.get(n.id);
+    if (!sw) continue;
+    const arr = portsByParent.get(sw) ?? [];
+    arr.push(n);
+    portsByParent.set(sw, arr);
+  }
+  for (const [sw, ports] of portsByParent) {
+    const swPos = pos[sw];
+    if (!swPos) continue;
+    ports.sort((a, b) => a.id.localeCompare(b.id));
+    const perRow = 3;
+    const rowGap = 32;
+    const colGap = 60;
+    ports.forEach((p, i) => {
+      const row = Math.floor(i / perRow);
       const col = i % perRow;
-      const rowSize = Math.min(perRow, group.length - wrapRow * perRow);
-      const totalWidth = (rowSize - 1) * NODE_X_SPACING;
-      const xStart = VIEWPORT_CENTER_X - totalWidth / 2;
-      positions[n.id] = {
-        x: xStart + col * NODE_X_SPACING,
-        y: yBase + (subRow + wrapRow) * SUB_ROW_GAP,
+      const rowSize = Math.min(perRow, ports.length - row * perRow);
+      const xOffsets = spread(rowSize, -((rowSize - 1) * colGap) / 2, ((rowSize - 1) * colGap) / 2);
+      pos[p.id] = {
+        x: swPos.x + xOffsets[col],
+        y: swPos.y + 30 + row * rowGap,
       };
     });
   }
-  return positions;
+
+  // ── NSX overlay row 1: T0, TGW, NSX project, NSX edges ──
+  const nsxRow1Items: TopoNode[] = [];
+  const t0 = nodes.find((n) => n.type === "tier0");
+  const tgw = nodes.find((n) => n.type === "transit_gateway");
+  const proj = nodes.find((n) => n.type === "nsx_project");
+  if (t0) nsxRow1Items.push(t0);
+  if (tgw) nsxRow1Items.push(tgw);
+  if (proj) nsxRow1Items.push(proj);
+  const nsxEdges = nodes
+    .filter((n) => n.type === "nsx_edge")
+    .sort((a, b) => a.id.localeCompare(b.id));
+  nsxRow1Items.push(...nsxEdges);
+  const nsxRow1Xs = spread(nsxRow1Items.length, W.left + 100, W.right - 100);
+  nsxRow1Items.forEach((n, i) => {
+    pos[n.id] = { x: nsxRow1Xs[i], y: Y.nsxRow1 };
+  });
+
+  // ── VPCs ──
+  const vpcs = nodes
+    .filter((n) => n.type === "vpc")
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const vpcXs = spread(vpcs.length, W.left + 250, W.right - 250);
+  vpcs.forEach((n, i) => {
+    pos[n.id] = { x: vpcXs[i], y: Y.vpc };
+  });
+
+  // ── Segments + DFW rules row ──
+  const segDfw = [
+    ...nodes.filter((n) => n.type === "segment").sort((a, b) => a.id.localeCompare(b.id)),
+    ...nodes.filter((n) => n.type === "dfw_rule").sort((a, b) => a.id.localeCompare(b.id)),
+  ];
+  const segDfwXs = spread(segDfw.length, W.left + 50, W.right - 50);
+  segDfw.forEach((n, i) => {
+    pos[n.id] = { x: segDfwXs[i], y: Y.segDfwRow };
+  });
+
+  // ── VMs anchored to host x; multiple VMs per host fan out ──
+  const vmsByHost = new Map<string, TopoNode[]>();
+  for (const n of nodes) {
+    if (n.type !== "vm") continue;
+    const h = hostOfVm.get(n.id);
+    if (!h) continue;
+    const arr = vmsByHost.get(h) ?? [];
+    arr.push(n);
+    vmsByHost.set(h, arr);
+  }
+  for (const [h, vms] of vmsByHost) {
+    const hPos = pos[h];
+    if (!hPos) continue;
+    vms.sort((a, b) => a.id.localeCompare(b.id));
+    if (vms.length === 1) {
+      pos[vms[0].id] = { x: hPos.x, y: Y.vm };
+    } else {
+      const xs = spread(vms.length, hPos.x - 75, hPos.x + 75);
+      vms.forEach((v, i) => {
+        pos[v.id] = { x: xs[i], y: Y.vm };
+      });
+    }
+  }
+
+  // ── Applications anchored to avg consumed VM x ──
+  const apps = nodes
+    .filter((n) => n.type === "application")
+    .sort((a, b) => a.id.localeCompare(b.id));
+  for (const a of apps) {
+    const vmIds = vmsOfApp.get(a.id) ?? [];
+    const xs = vmIds.map((id) => pos[id]?.x).filter((x): x is number => x !== undefined);
+    pos[a.id] = {
+      x: xs.length ? avg(xs) : (W.left + W.right) / 2,
+      y: Y.app,
+    };
+  }
+
+  // ── Fallback for any unplaced node (off-screen) ──
+  for (const n of nodes) {
+    if (!pos[n.id]) pos[n.id] = { x: -2000, y: -2000 };
+  }
+
+  return pos;
 }
