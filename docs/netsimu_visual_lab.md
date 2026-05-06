@@ -12,9 +12,9 @@ You install one Python package, run `netsimu web`, browser opens to `localhost:8
 
 You see:
 
-- A clean dark-mode page with the title "NetSimu — VCF Lab".
+- A clean light-theme page with the title "NetSimu — VCF Lab" (≥16px body text — see CLAUDE.md style rules).
 - The center is a **single layered topology diagram** of a small but realistic VCF deployment: 2 spines, 4 ToRs (mixed Cisco/Arista), 8 ESX hosts, NSX overlay (T0, TGW, VPCs, segments), VMs grouped into three application tiers.
-- Layers are visually distinct — physical fabric at bottom in cool grey, ESX/pNIC layer in warm grey, NSX overlay in violet, applications at the top in green. Connections drawn as labeled lines.
+- Layers are visually distinct — physical fabric at bottom in muted blue, ESX/pNIC layer in muted slate, NSX overlay in teal, applications at the top in green. Connections drawn as labeled lines.
 - Vendor icons: real Cisco N9K silhouettes for the Cisco ToRs, Arista 7050 for Arista, VMware ESX hosts, NSX Edge appliances. Cables as thin lines, BGP sessions as thicker lines with "BGP" labels.
 - A right-side panel says "Welcome. Hover anything to learn what it is. Click anything for a deep dive. Or jump straight into the Concept Tour →"
 - A persistent **"Break Something"** panel on the left with a list of faults you can inject.
@@ -233,7 +233,7 @@ The web server runs the simulator in real-time mode (the simulator already suppo
 ```
 
 - **Cytoscape.js** for the topology canvas. Chosen over D3 because Cytoscape has built-in graph layout, custom nodes, animation primitives, and a much shorter learning curve for graph rendering. It's the right tool for this job.
-- **Tailwind CSS** for styling. Dark mode by default.
+- **Tailwind CSS** for styling. Light theme only — no dark mode (see CLAUDE.md hard rules).
 - **No backend framework dependency in the browser** — plain `fetch` and WebSocket. The whole frontend is one ~2000-line bundle.
 - **Educational content as Markdown files** (one per concept) that the backend serves. Easy to edit without recompiling.
 
@@ -304,7 +304,7 @@ Roughly two weeks of focused work, broken into milestones I can deliver one at a
 
 Three things I want your input on. Be specific or I'll guess wrong.
 
-1. **Visual style.** Two clean reference points: VMware's own UI (clean dark, lots of metric tiles) vs. something like the Cilium Hubble UI (more diagram-forward, playful). My instinct is something between — clean dark, diagram-forward, no chrome — but tell me if you have a strong preference.
+1. **Visual style.** Reference points: VMware's vSphere client (clean professional, light, lots of metric tiles) and the AWS console aesthetic (light, dense, navigable). The lab uses a clean light theme with muted layer colors — diagram-forward, no chrome, ≥16px text everywhere (CLAUDE.md hard rule).
 
 2. **Concept tour text style.** Should the educational content read more like (a) a textbook chapter (precise, formal, complete), (b) a senior engineer explaining over coffee (informal, anecdotal, opinionated), or (c) something in between? My instinct: (b) for the tooltips and quick reads, (a) for the deep-dive panels.
 
