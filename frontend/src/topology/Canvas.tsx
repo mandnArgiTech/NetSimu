@@ -1,9 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import cytoscape from "cytoscape";
-import type { Core, ElementDefinition } from "cytoscape";
+import type { Core, ElementDefinition, NodeSingular } from "cytoscape";
 import expandCollapse from "cytoscape-expand-collapse";
 
-import type { SavedPositions, TopologyResponse } from "../api";
+import type { SavedPositions, TopoNode, TopologyResponse } from "../api";
 import { buildStylesheet } from "./style";
 import { buildParentMap, COLLAPSED_BY_DEFAULT_TYPES } from "./parents";
 import { computePositions } from "./layout";
@@ -35,23 +35,36 @@ const HIDDEN_EDGE_RELS = new Set<string>([
 
 const HIDDEN_NODE_TYPES = new Set<string>(["tep_pair", "bgp_session"]);
 
+export interface HoverPayload {
+  node: TopoNode;
+  /** Page-coordinate position of the cursor, for tooltip placement. */
+  pageX: number;
+  pageY: number;
+}
+
 export interface CanvasHandle {
-  /** Read every node's current position — used by the Save button. */
   getPositions(): SavedPositions;
+  /** Highlight + center on a node (used by Connections list). */
+  selectNode(id: string): void;
 }
 
 interface CanvasProps {
   topology: TopologyResponse;
-  /** User-saved positions; override the computed layout for matching ids. */
   savedPositions: SavedPositions;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onHover: (payload: HoverPayload | null) => void;
 }
 
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
-  { topology, savedPositions },
+  { topology, savedPositions, selectedId, onSelect, onHover },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<Core | null>(null);
+  // Lookup of leaf-node TopoNodes (the canvas may show compound parents
+  // we don't have a topology entry for, but here every node is real).
+  const nodeIndexRef = useRef<Map<string, TopoNode>>(new Map());
 
   useImperativeHandle(
     ref,
@@ -66,6 +79,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
         });
         return out;
       },
+      selectNode(id: string) {
+        const cy = cyRef.current;
+        if (!cy) return;
+        const target = cy.getElementById(id);
+        if (target.length === 0) return;
+        cy.$("node:selected").unselect();
+        target.select();
+        cy.animate({ center: { eles: target }, zoom: cy.zoom() }, { duration: 250 });
+      },
     }),
     [],
   );
@@ -77,6 +99,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       (n) => !HIDDEN_NODE_TYPES.has(n.type),
     );
     const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+    nodeIndexRef.current = new Map(visibleNodes.map((n) => [n.id, n]));
 
     const visibleEdges = topology.edges.filter(
       (e) =>
@@ -89,8 +112,6 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     const parentMap = buildParentMap(topology.edges);
     const computed = computePositions(visibleNodes, topology.edges);
 
-    // Saved positions win over computed ones — that's the whole point of
-    // the Save button. Unknown ids in savedPositions are ignored silently.
     const positions: SavedPositions = { ...computed };
     for (const [id, p] of Object.entries(savedPositions)) {
       if (visibleNodeIds.has(id)) positions[id] = p;
@@ -148,20 +169,71 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     if (initiallyCollapsed.length) api.collapse(initiallyCollapsed);
     cy.fit(undefined, 60);
 
+    // ── Hover (200ms delay per design doc § 3a) ─────────────────────────
+    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+    cy.on("mouseover", "node", (evt) => {
+      const n = evt.target as NodeSingular;
+      const id = n.id();
+      const node = nodeIndexRef.current.get(id);
+      if (!node) return;
+      // Cytoscape's renderedPosition is canvas-relative; we want page coords.
+      const renderedPos = n.renderedPosition();
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const pageX = rect.left + renderedPos.x;
+      const pageY = rect.top + renderedPos.y;
+      if (hoverTimer) clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => {
+        onHover({ node, pageX, pageY });
+      }, 200);
+    });
+    cy.on("mouseout", "node", () => {
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+      onHover(null);
+    });
+
+    // ── Click: select for the detail panel; expand-collapse for parents ─
     cy.on("tap", "node", (evt) => {
-      const n = evt.target;
+      const n = evt.target as NodeSingular;
+      // Compound parents handle their own expand/collapse first — clicking
+      // a collapsed compound reveals children rather than opening a panel.
       if (api.isExpandable(n)) {
         api.expand(n);
-      } else if (n.isParent() && api.isCollapsible(n)) {
-        if (evt.target === n) api.collapse(n);
+        return;
       }
+      if (n.isParent() && api.isCollapsible(n) && evt.target === n) {
+        // Don't open the panel when clicking the bare chrome of an
+        // expanded parent (that means "collapse me").
+        api.collapse(n);
+        return;
+      }
+      onSelect(n.id());
+    });
+    cy.on("tap", (evt) => {
+      // Tap on background (no target node) → deselect.
+      if (evt.target === cy) onSelect(null);
     });
 
     return () => {
+      if (hoverTimer) clearTimeout(hoverTimer);
       cy.destroy();
       cyRef.current = null;
     };
-  }, [topology, savedPositions]);
+  }, [topology, savedPositions, onSelect, onHover]);
+
+  // Sync external selectedId → cytoscape's :selected state.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.$("node:selected").unselect();
+    if (selectedId) {
+      const target = cy.getElementById(selectedId);
+      if (target.length > 0) target.select();
+    }
+  }, [selectedId]);
 
   return <div ref={containerRef} className="cy-canvas" />;
 });

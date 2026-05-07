@@ -45,3 +45,50 @@ select {
   height: 100%;
   background: var(--bg-canvas);
 }
+
+/* Markdown body in the detail panel. ≥16px everywhere; comfortable
+ * line-height for paragraph reading. */
+.md-body {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+.md-body h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.md-body h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 18px 0 8px;
+}
+.md-body p {
+  margin: 0 0 14px;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0 0 14px 20px;
+  padding: 0;
+}
+.md-body li {
+  margin-bottom: 6px;
+}
+.md-body strong {
+  font-weight: 600;
+}
+.md-body pre {
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 16px;
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.md-body pre code {
+  background: transparent;
+  padding: 0;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}

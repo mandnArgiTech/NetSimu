@@ -11,11 +11,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ..topology import Topology, build_reference_topology
+from .content_loader import list_concept_ids, load_concept
 from .layout_store import clear_layout, read_layout, write_layout
 from .serialize import serialize_topology
 
@@ -63,6 +64,19 @@ def create_app(topology: Topology | None = None) -> FastAPI:
         """Delete the saved layout so the canvas falls back to defaults."""
         removed = clear_layout()
         return {"reset": True, "removed": removed}
+
+    @app.get("/api/concepts")
+    def list_concepts() -> dict:
+        """List every concept id available for /api/concept/{id}."""
+        return {"ids": list_concept_ids()}
+
+    @app.get("/api/concept/{concept_id}")
+    def get_concept(concept_id: str) -> dict:
+        """Return {id, title, body} for a concept, or 404."""
+        concept = load_concept(concept_id)
+        if concept is None:
+            raise HTTPException(status_code=404, detail=f"unknown concept: {concept_id}")
+        return {"id": concept.id, "title": concept.title, "body": concept.body}
 
     if _FRONTEND_DIST.is_dir():
         # html=True makes the mount serve index.html for "/" — single-page app.
