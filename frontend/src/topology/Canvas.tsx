@@ -1,9 +1,19 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import cytoscape from "cytoscape";
-import type { Core, ElementDefinition, NodeSingular } from "cytoscape";
+import type {
+  Core,
+  EdgeSingular,
+  ElementDefinition,
+  NodeSingular,
+} from "cytoscape";
 import expandCollapse from "cytoscape-expand-collapse";
 
-import type { SavedPositions, TopoNode, TopologyResponse } from "../api";
+import type {
+  SavedPositions,
+  TopoEdge,
+  TopoNode,
+  TopologyResponse,
+} from "../api";
 import { buildStylesheet } from "./style";
 import { buildParentMap, COLLAPSED_BY_DEFAULT_TYPES } from "./parents";
 import { computePositions } from "./layout";
@@ -34,12 +44,24 @@ const HIDDEN_EDGE_RELS = new Set<string>([
 
 const HIDDEN_NODE_TYPES = new Set<string>(["tep_pair", "bgp_session"]);
 
-export interface HoverPayload {
-  node: TopoNode;
-  /** Page-coordinate position of the cursor, for tooltip placement. */
-  pageX: number;
-  pageY: number;
-}
+export type HoverPayload =
+  | {
+      kind: "node";
+      node: TopoNode;
+      /** Page-coordinate position of the cursor, for tooltip placement. */
+      pageX: number;
+      pageY: number;
+    }
+  | {
+      kind: "edge";
+      edge: TopoEdge;
+      pageX: number;
+      pageY: number;
+    };
+
+export type Selection =
+  | { kind: "node"; id: string }
+  | { kind: "edge"; id: string };
 
 export interface CanvasHandle {
   getPositions(): SavedPositions;
@@ -50,13 +72,13 @@ export interface CanvasHandle {
 interface CanvasProps {
   topology: TopologyResponse;
   savedPositions: SavedPositions;
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
+  selection: Selection | null;
+  onSelect: (sel: Selection | null) => void;
   onHover: (payload: HoverPayload | null) => void;
 }
 
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
-  { topology, savedPositions, selectedId, onSelect, onHover },
+  { topology, savedPositions, selection, onSelect, onHover },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -64,6 +86,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
   // Lookup of leaf-node TopoNodes (the canvas may show compound parents
   // we don't have a topology entry for, but here every node is real).
   const nodeIndexRef = useRef<Map<string, TopoNode>>(new Map());
+  const edgeIndexRef = useRef<Map<string, TopoEdge>>(new Map());
 
   useImperativeHandle(
     ref,
@@ -107,6 +130,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
         visibleNodeIds.has(e.source) &&
         visibleNodeIds.has(e.target),
     );
+    edgeIndexRef.current = new Map(visibleEdges.map((e) => [e.id, e]));
 
     const parentMap = buildParentMap(topology.edges);
     const computed = computePositions(visibleNodes, topology.edges);
@@ -169,13 +193,24 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     cy.fit(undefined, 60);
 
     // ── Hover (200ms delay per design doc § 3a) ─────────────────────────
+    // We use a cursor-tracking approach: on each mousemove the renderer
+    // gives us page coords, which we use as the tooltip anchor. Node
+    // hover uses node.renderedPosition() for stable placement; edge
+    // hover follows the cursor because edges have no single "centroid"
+    // the user would naturally read from.
     let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+    const cancelHover = () => {
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+      onHover(null);
+    };
+
     cy.on("mouseover", "node", (evt) => {
       const n = evt.target as NodeSingular;
-      const id = n.id();
-      const node = nodeIndexRef.current.get(id);
+      const node = nodeIndexRef.current.get(n.id());
       if (!node) return;
-      // Cytoscape's renderedPosition is canvas-relative; we want page coords.
       const renderedPos = n.renderedPosition();
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -183,16 +218,25 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       const pageY = rect.top + renderedPos.y;
       if (hoverTimer) clearTimeout(hoverTimer);
       hoverTimer = setTimeout(() => {
-        onHover({ node, pageX, pageY });
+        onHover({ kind: "node", node, pageX, pageY });
       }, 200);
     });
-    cy.on("mouseout", "node", () => {
-      if (hoverTimer) {
-        clearTimeout(hoverTimer);
-        hoverTimer = null;
-      }
-      onHover(null);
+    cy.on("mouseout", "node", cancelHover);
+
+    cy.on("mouseover", "edge", (evt) => {
+      const e = evt.target as EdgeSingular;
+      const edge = edgeIndexRef.current.get(e.id());
+      if (!edge) return;
+      const orig = (evt.originalEvent as MouseEvent | undefined) ?? null;
+      // For edges we follow the cursor — there's no obvious centroid.
+      const pageX = orig?.pageX ?? e.midpoint().x;
+      const pageY = orig?.pageY ?? e.midpoint().y;
+      if (hoverTimer) clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => {
+        onHover({ kind: "edge", edge, pageX, pageY });
+      }, 200);
     });
+    cy.on("mouseout", "edge", cancelHover);
 
     // ── Click: open the detail panel AND, for compound parents, toggle
     // expand/collapse. The user expects "I clicked the spine, show me the
@@ -204,10 +248,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       } else if (n.isParent() && api.isCollapsible(n) && evt.target === n) {
         api.collapse(n);
       }
-      onSelect(n.id());
+      onSelect({ kind: "node", id: n.id() });
+    });
+    cy.on("tap", "edge", (evt) => {
+      const e = evt.target as EdgeSingular;
+      onSelect({ kind: "edge", id: e.id() });
     });
     cy.on("tap", (evt) => {
-      // Tap on background (no target node) → deselect.
+      // Tap on background (no target) → deselect.
       if (evt.target === cy) onSelect(null);
     });
 
@@ -218,16 +266,17 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     };
   }, [topology, savedPositions, onSelect, onHover]);
 
-  // Sync external selectedId → cytoscape's :selected state.
+  // Sync external selection → cytoscape's :selected state for the right
+  // element class (nodes and edges have separate :selected styling).
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    cy.$("node:selected").unselect();
-    if (selectedId) {
-      const target = cy.getElementById(selectedId);
+    cy.$(":selected").unselect();
+    if (selection) {
+      const target = cy.getElementById(selection.id);
       if (target.length > 0) target.select();
     }
-  }, [selectedId]);
+  }, [selection]);
 
   return <div ref={containerRef} className="cy-canvas" />;
 });

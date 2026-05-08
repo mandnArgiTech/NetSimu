@@ -5,7 +5,7 @@
 // (spine vs ToR — both "switch" in the topology — and Cisco vs Arista
 // flavor on ToR labels).
 
-import type { TopoNode } from "../api";
+import type { TopoEdge, TopoNode } from "../api";
 
 const TYPE_TOOLTIPS: Record<string, string> = {
   switch_port:
@@ -58,4 +58,70 @@ export function conceptIdFor(node: TopoNode): string {
     return role === "spine" ? "spine" : "tor";
   }
   return node.type;
+}
+
+// ── Edges ────────────────────────────────────────────────────────────
+// Each topology relation has a friendly name (used in the panel header
+// and the legend) and a one-line tooltip. The detail-panel body comes
+// from /api/concept/{rel} — same loader as nodes.
+
+const REL_LABEL: Record<string, string> = {
+  connects_to: "Physical cable",
+  has_bgp: "BGP session",
+  depends_on: "Application dependency",
+  runs_on: "VM runs on host",
+  attached_to: "VM attached to segment",
+  has_tgw: "Project owns Transit Gateway",
+  has_vpc: "Project owns VPC",
+  has_segment: "VPC owns segment",
+  has_dfw_rule: "Project owns DFW rule",
+  consists_of: "Application is realized by VM",
+  hosts_vm: "Host runs Edge VM",
+  hosts_sr: "Edge runs T0 service router",
+  uses_tgw: "VPC uses Transit Gateway",
+  uses_t0: "TGW uses T0",
+};
+
+const REL_TOOLTIP: Record<string, string> = {
+  connects_to:
+    "Physical cable — a literal wire between two switch ports.",
+  has_bgp:
+    "BGP session — TCP peering between two switches exchanging routes.",
+  depends_on:
+    "Application dependency — this tier calls the other (e.g. web → api → db).",
+  runs_on:
+    "VM runs on this host — its CPU/RAM/vNIC live there until vMotion.",
+  attached_to:
+    "VM attached to a segment — its vNIC is on this overlay subnet.",
+  has_tgw:
+    "Project owns this Transit Gateway — its single hub for east-west traffic.",
+  has_vpc:
+    "Project owns this VPC — tenancy boundary for the VPC.",
+  has_segment:
+    "VPC owns this segment — one of the VPC's overlay subnets.",
+  has_dfw_rule:
+    "Project owns this DFW rule — enforced at every host in the project.",
+  consists_of:
+    "Application is realized by this VM — one of the parent app's instances.",
+  hosts_vm:
+    "Host runs this Edge VM — the Edge node lives on this ESX host.",
+  hosts_sr:
+    "Edge runs this T0 service router — north-south routing happens here.",
+  uses_tgw:
+    "VPC attaches to this Transit Gateway for east-west traffic.",
+  uses_t0:
+    "TGW hands its north-south traffic to this T0 gateway.",
+};
+
+export function labelForRel(rel: string): string {
+  return REL_LABEL[rel] ?? rel;
+}
+
+export function tooltipForEdge(edge: TopoEdge): string {
+  const tip = REL_TOOLTIP[edge.rel] ?? labelForRel(edge.rel);
+  return `${tip}\n${edge.source} → ${edge.target}`;
+}
+
+export function conceptIdForEdge(edge: TopoEdge): string {
+  return edge.rel;
 }

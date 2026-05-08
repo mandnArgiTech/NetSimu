@@ -212,6 +212,18 @@ export function buildStylesheet(): cytoscape.Stylesheet[] {
         "background-blacken": -0.05,
       },
     },
+    // ── Selected edge highlight ───────────────────────────────────────
+    // Thicker and more saturated than the default. Overrides per-rel
+    // colors so the user always sees a clear "this is selected" affordance.
+    {
+      selector: "edge:selected",
+      style: {
+        "line-color": "#1d4ed8",
+        "target-arrow-color": "#1d4ed8",
+        width: 4,
+        opacity: 1,
+      },
+    },
   ];
   return sheet;
 }

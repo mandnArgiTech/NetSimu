@@ -8,10 +8,16 @@ import {
   type SavedPositions,
   type TopologyResponse,
 } from "./api";
-import { Canvas, type CanvasHandle, type HoverPayload } from "./topology/Canvas";
+import {
+  Canvas,
+  type CanvasHandle,
+  type HoverPayload,
+  type Selection,
+} from "./topology/Canvas";
 import { DetailPanel } from "./panels/DetailPanel";
+import { EdgeDetail } from "./panels/EdgeDetail";
 import { Tooltip } from "./panels/Tooltip";
-import { tooltipFor } from "./panels/tooltips";
+import { tooltipFor, tooltipForEdge } from "./panels/tooltips";
 
 type LoadState =
   | { kind: "loading" }
@@ -23,7 +29,7 @@ export default function App() {
   const [savedPositions, setSavedPositions] = useState<SavedPositions>({});
   const [status, setStatus] = useState<string>("");
   const [statusKind, setStatusKind] = useState<"info" | "error">("info");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
   const [hover, setHover] = useState<HoverPayload | null>(null);
   const [canvasKey, setCanvasKey] = useState(0);
 
@@ -77,17 +83,22 @@ export default function App() {
     }
   }, [flash]);
 
-  // The Connections list calls this with the peer id; we both update the
-  // detail panel selection AND ask the canvas to highlight + center it.
+  // The Connections list and EdgeDetail's endpoint buttons call this
+  // with a peer node id. We both update selection AND ask the canvas to
+  // highlight + center it.
   const handleSelectFromPanel = useCallback((id: string) => {
-    setSelectedId(id);
+    setSelection({ kind: "node", id });
     canvasRef.current?.selectNode(id);
   }, []);
 
   const ready = topology.kind === "ready";
   const selectedNode =
-    ready && selectedId
-      ? topology.data.nodes.find((n) => n.id === selectedId) ?? null
+    ready && selection?.kind === "node"
+      ? topology.data.nodes.find((n) => n.id === selection.id) ?? null
+      : null;
+  const selectedEdge =
+    ready && selection?.kind === "edge"
+      ? topology.data.edges.find((e) => e.id === selection.id) ?? null
       : null;
 
   return (
@@ -115,23 +126,39 @@ export default function App() {
               ref={canvasRef}
               topology={topology.data}
               savedPositions={savedPositions}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+              selection={selection}
+              onSelect={setSelection}
               onHover={setHover}
             />
           )}
         </div>
-        {ready && (
+        {ready && selectedEdge ? (
+          <EdgeDetail
+            edge={selectedEdge}
+            nodes={topology.data.nodes}
+            onSelectNode={handleSelectFromPanel}
+          />
+        ) : ready ? (
           <DetailPanel
             selected={selectedNode}
             nodes={topology.data.nodes}
             edges={topology.data.edges}
             onSelect={handleSelectFromPanel}
           />
-        )}
+        ) : null}
       </main>
       <LegendBar />
-      {hover && <Tooltip text={tooltipFor(hover.node)} x={hover.pageX} y={hover.pageY} />}
+      {hover && (
+        <Tooltip
+          text={
+            hover.kind === "node"
+              ? tooltipFor(hover.node)
+              : tooltipForEdge(hover.edge)
+          }
+          x={hover.pageX}
+          y={hover.pageY}
+        />
+      )}
     </div>
   );
 }
