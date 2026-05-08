@@ -114,6 +114,37 @@ These are decisions already made. Do not relitigate them in new sessions.
    library, pin the exact version. We don't want a Cytoscape.js update to
    break the lab silently.
 
+9. **Plain-language change report after every code change.** When you
+   finish editing files, end the response with FOUR short sections — no
+   exceptions, even for one-line fixes:
+
+   **What I changed (plain language):**
+   - 2–6 bullets a non-developer could follow. Say what now works
+     differently from the *user's* point of view, not what symbols moved.
+     Bad: "refactored buildParentMap into a Map<string,string>".
+     Good: "Clicking a spine now opens its info panel on the right."
+
+   **How to build it:**
+   - The exact build command(s) to copy-paste (e.g. `make web-build`).
+   - Skip this section only if no build step is needed (e.g. only docs
+     or content files changed) — and say so explicitly.
+
+   **How to run it:**
+   - The exact command to start the lab (e.g. `venv/bin/netsimu-web --port 8765`).
+   - The URL to open in the browser, with port.
+   - What to hard-refresh / restart if the server is already running.
+
+   **How to test it:**
+   - The automated test command (`make test` for backend; note frontend
+     has no test runner yet).
+   - A short manual click-through: 2–4 numbered steps the user can do in
+     the browser to confirm the fix. Each step says "do X → expect Y".
+
+   Keep all four sections terse. The goal: the user can review the change
+   without reading the diff, re-build and re-run the lab without
+   re-deriving commands, and verify the fix without guessing what to
+   click. This rule applies whether the change is committed or not.
+
 ---
 
 ## Style decisions already made
