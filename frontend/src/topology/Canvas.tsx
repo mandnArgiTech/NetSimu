@@ -19,18 +19,17 @@ interface ExpandCollapseApi {
 
 const COMPOUND_RELS = new Set<string>(["has_port", "has_pnic", "has_tep"]);
 
+// Edges hidden from the canvas. Kept tight on purpose: every other rel
+// teaches something. `encapsulated_by` would draw 24 mesh lines from each
+// segment to every TEP pair (visual chaos). `in_pair` is internal to the
+// TEP-pair node and already implied by it.
+//
+// Containment rels (has_vpc, has_segment, consists_of, etc.) and reference
+// rels (uses_t0, uses_tgw) are kept visible — see style.ts for the dotted
+// vs solid styling that distinguishes them from data-plane edges.
 const HIDDEN_EDGE_RELS = new Set<string>([
   "encapsulated_by",
   "in_pair",
-  "uses_tgw",
-  "uses_t0",
-  "hosts_sr",
-  "has_dfw_rule",
-  "has_tgw",
-  "has_vpc",
-  "has_segment",
-  "consists_of",
-  "hosts_vm",
 ]);
 
 const HIDDEN_NODE_TYPES = new Set<string>(["tep_pair", "bgp_session"]);
@@ -195,20 +194,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       onHover(null);
     });
 
-    // ── Click: select for the detail panel; expand-collapse for parents ─
+    // ── Click: open the detail panel AND, for compound parents, toggle
+    // expand/collapse. The user expects "I clicked the spine, show me the
+    // spine" — so the panel always opens, regardless of expand state.
     cy.on("tap", "node", (evt) => {
       const n = evt.target as NodeSingular;
-      // Compound parents handle their own expand/collapse first — clicking
-      // a collapsed compound reveals children rather than opening a panel.
       if (api.isExpandable(n)) {
         api.expand(n);
-        return;
-      }
-      if (n.isParent() && api.isCollapsible(n) && evt.target === n) {
-        // Don't open the panel when clicking the bare chrome of an
-        // expanded parent (that means "collapse me").
+      } else if (n.isParent() && api.isCollapsible(n) && evt.target === n) {
         api.collapse(n);
-        return;
       }
       onSelect(n.id());
     });

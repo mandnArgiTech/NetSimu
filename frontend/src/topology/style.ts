@@ -167,6 +167,42 @@ export function buildStylesheet(): cytoscape.Stylesheet[] {
       selector: 'edge[rel = "attached_to"]',
       style: { "line-color": "#0d9488", opacity: 0.75 },
     },
+    // ── Containment edges ("X contains Y") ────────────────────────────
+    // Dotted, no arrowhead, low opacity. These say "structural ownership"
+    // — a Project owns its VPCs, an App owns its VMs — and should fade
+    // visually behind the data-plane edges (connects_to, attached_to).
+    ...[
+      "has_tgw",
+      "has_vpc",
+      "has_segment",
+      "has_dfw_rule",
+      "consists_of",
+      "hosts_vm",
+      "hosts_sr",
+    ].map((rel) => ({
+      selector: `edge[rel = "${rel}"]`,
+      style: {
+        "line-color": "#94a3b8",
+        "line-style": "dotted",
+        "target-arrow-shape": "none",
+        opacity: 0.45,
+        width: 1.2,
+      },
+    })) as cytoscape.Stylesheet[],
+    // ── Reference edges ("X uses Y") ──────────────────────────────────
+    // Solid, with arrowhead, teal — distinct from data-plane and from
+    // containment. A VPC "uses" a TGW; a TGW "uses" a T0.
+    ...["uses_tgw", "uses_t0"].map((rel) => ({
+      selector: `edge[rel = "${rel}"]`,
+      style: {
+        "line-color": "#0d9488",
+        "target-arrow-color": "#0d9488",
+        "target-arrow-shape": "triangle",
+        "line-style": "solid",
+        opacity: 0.7,
+        width: 1.5,
+      },
+    })) as cytoscape.Stylesheet[],
     // ── Selected node highlight (M2) ──────────────────────────────────
     {
       selector: "node:selected",
