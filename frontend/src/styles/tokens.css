@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CLAUDE.md hard rules:
+ *   1. Light theme only.
+ *   2. ≥16px body, 20-32px headings. Never 11/12/13/14px.
+ */
+
+:root {
+  --bg-page: #ffffff;
+  --bg-canvas: #fafafa;
+  --bg-panel: #f5f7fa;
+  --border-soft: #e5e7eb;
+  --border-strong: #cbd5e1;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --accent: #1d4ed8;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family:
+    "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+button,
+input,
+select {
+  font-size: 16px;
+}
+
+/* Topology canvas fills its parent. Cytoscape needs an explicit size. */
+.cy-canvas {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-canvas);
+}
+
+/* Markdown body in the detail panel. ≥16px everywhere; comfortable
+ * line-height for paragraph reading. */
+.md-body {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+.md-body h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.md-body h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 18px 0 8px;
+}
+.md-body p {
+  margin: 0 0 14px;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0 0 14px 20px;
+  padding: 0;
+}
+.md-body li {
+  margin-bottom: 6px;
+}
+.md-body strong {
+  font-weight: 600;
+}
+.md-body pre {
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 16px;
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.md-body pre code {
+  background: transparent;
+  padding: 0;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
