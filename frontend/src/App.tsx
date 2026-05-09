@@ -8,7 +8,10 @@ import {
   type SavedPositions,
   type TopologyResponse,
 } from "./api";
-import { Canvas, type CanvasHandle } from "./topology/Canvas";
+import { Canvas, type CanvasHandle, type HoverPayload } from "./topology/Canvas";
+import { DetailPanel } from "./panels/DetailPanel";
+import { Tooltip } from "./panels/Tooltip";
+import { tooltipFor } from "./panels/tooltips";
 
 type LoadState =
   | { kind: "loading" }
@@ -20,8 +23,8 @@ export default function App() {
   const [savedPositions, setSavedPositions] = useState<SavedPositions>({});
   const [status, setStatus] = useState<string>("");
   const [statusKind, setStatusKind] = useState<"info" | "error">("info");
-  // Bumping this remounts Canvas — needed after Reset so the cy instance
-  // re-reads computed positions cleanly.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hover, setHover] = useState<HoverPayload | null>(null);
   const [canvasKey, setCanvasKey] = useState(0);
 
   const canvasRef = useRef<CanvasHandle>(null);
@@ -74,7 +77,18 @@ export default function App() {
     }
   }, [flash]);
 
+  // The Connections list calls this with the peer id; we both update the
+  // detail panel selection AND ask the canvas to highlight + center it.
+  const handleSelectFromPanel = useCallback((id: string) => {
+    setSelectedId(id);
+    canvasRef.current?.selectNode(id);
+  }, []);
+
   const ready = topology.kind === "ready";
+  const selectedNode =
+    ready && selectedId
+      ? topology.data.nodes.find((n) => n.id === selectedId) ?? null
+      : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -87,23 +101,37 @@ export default function App() {
         status={status}
         statusKind={statusKind}
       />
-      <main className="flex-1 overflow-hidden">
-        {topology.kind === "loading" && (
-          <CenterMessage text="Loading topology…" />
-        )}
-        {topology.kind === "error" && (
-          <CenterMessage text={`Could not load topology: ${topology.message}`} />
-        )}
+      <main className="flex flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden">
+          {topology.kind === "loading" && (
+            <CenterMessage text="Loading topology…" />
+          )}
+          {topology.kind === "error" && (
+            <CenterMessage text={`Could not load topology: ${topology.message}`} />
+          )}
+          {ready && (
+            <Canvas
+              key={canvasKey}
+              ref={canvasRef}
+              topology={topology.data}
+              savedPositions={savedPositions}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onHover={setHover}
+            />
+          )}
+        </div>
         {ready && (
-          <Canvas
-            key={canvasKey}
-            ref={canvasRef}
-            topology={topology.data}
-            savedPositions={savedPositions}
+          <DetailPanel
+            selected={selectedNode}
+            nodes={topology.data.nodes}
+            edges={topology.data.edges}
+            onSelect={handleSelectFromPanel}
           />
         )}
       </main>
       <LegendBar />
+      {hover && <Tooltip text={tooltipFor(hover.node)} x={hover.pageX} y={hover.pageY} />}
     </div>
   );
 }
@@ -133,11 +161,9 @@ function Header({
       style={{ borderColor: "var(--border-soft)" }}
     >
       <div className="flex-shrink-0">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          NetSimu — VCF Lab
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-tight">NetSimu — VCF Lab</h1>
         <p className="text-base" style={{ color: "var(--text-secondary)" }}>
-          Drag nodes to rearrange. Click Save to persist your layout.
+          Hover for a one-liner. Click for the deep dive. Drag to rearrange.
         </p>
       </div>
       <div className="flex items-center gap-4">
@@ -154,10 +180,7 @@ function Header({
           </span>
         )}
         {stats && (
-          <span
-            className="text-base"
-            style={{ color: "var(--text-secondary)" }}
-          >
+          <span className="text-base" style={{ color: "var(--text-secondary)" }}>
             {stats.nodes} nodes · {stats.edges} edges
             {savedCount > 0 ? ` · ${savedCount} saved` : ""}
           </span>

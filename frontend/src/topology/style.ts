@@ -167,6 +167,15 @@ export function buildStylesheet(): cytoscape.Stylesheet[] {
       selector: 'edge[rel = "attached_to"]',
       style: { "line-color": "#0d9488", opacity: 0.75 },
     },
+    // ── Selected node highlight (M2) ──────────────────────────────────
+    {
+      selector: "node:selected",
+      style: {
+        "border-width": 4,
+        "border-color": "#1d4ed8",
+        "background-blacken": -0.05,
+      },
+    },
   ];
   return sheet;
 }

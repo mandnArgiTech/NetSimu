@@ -65,3 +65,18 @@ export async function resetLayout(): Promise<void> {
   const res = await fetch("/api/layout", { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /api/layout failed: ${res.status}`);
 }
+
+// ── Concept content (M2) ──────────────────────────────────────────────
+export interface Concept {
+  id: string;
+  title: string;
+  body: string;
+}
+
+export async function fetchConcept(id: string): Promise<Concept> {
+  const res = await fetch(`/api/concept/${encodeURIComponent(id)}`);
+  if (!res.ok) {
+    throw new Error(`GET /api/concept/${id} failed: ${res.status}`);
+  }
+  return res.json();
+}
