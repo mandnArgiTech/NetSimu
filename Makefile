@@ -1,4 +1,4 @@
-.PHONY: install dev sim sim-all mocks test lint clean replay
+.PHONY: install dev sim sim-all mocks test lint clean replay web-build web-run web-dev
 
 install:
 	pip install -e .
@@ -42,3 +42,19 @@ clean:
 
 replay:
 	@echo "Usage: python -m netops_sim.replay runs/<file>.jsonl --speed 10"
+
+# ── Visual lab (M1+) ─────────────────────────────────────────────────────
+# `web-build` produces frontend/dist which FastAPI serves. Run once before
+# `web-run`, or any time the frontend source changes.
+web-build:
+	cd frontend && npm ci && npm run build
+
+web-run:
+	netsimu-web
+
+# Dev workflow: backend on :8000, Vite dev server on :5173 with /api proxied.
+# Run these in two terminals.
+web-dev:
+	@echo "Run these in two terminals:"
+	@echo "  1) netsimu-web --reload"
+	@echo "  2) cd frontend && npm run dev"
