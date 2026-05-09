@@ -18,6 +18,7 @@ import { DetailPanel } from "./panels/DetailPanel";
 import { EdgeDetail } from "./panels/EdgeDetail";
 import { Tooltip } from "./panels/Tooltip";
 import { tooltipFor, tooltipForEdge } from "./panels/tooltips";
+import { useConnectionStatus } from "./state/LiveContext";
 
 type LoadState =
   | { kind: "loading" }
@@ -194,6 +195,7 @@ function Header({
         </p>
       </div>
       <div className="flex items-center gap-4">
+        <ConnectionPill />
         {status && (
           <span
             role="status"
@@ -275,6 +277,35 @@ function LegendBar() {
         </span>
       ))}
     </footer>
+  );
+}
+
+function ConnectionPill() {
+  const status = useConnectionStatus();
+  const palette = {
+    connecting: { dot: "#f59e0b", text: "#92400e", bg: "#fef3c7", label: "Connecting…" },
+    connected: { dot: "#15803d", text: "#15803d", bg: "#e6f4ea", label: "Live" },
+    disconnected: { dot: "#b91c1c", text: "#b91c1c", bg: "#fee2e2", label: "Disconnected" },
+  }[status];
+  return (
+    <span
+      role="status"
+      aria-label={`Stream ${status}`}
+      title={`Stream ${status}`}
+      className="flex items-center gap-2 rounded-full px-3 py-1 text-base"
+      style={{ background: palette.bg, color: palette.text, fontWeight: 500 }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: 999,
+          background: palette.dot,
+        }}
+      />
+      {palette.label}
+    </span>
   );
 }
 
