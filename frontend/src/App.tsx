@@ -8,10 +8,17 @@ import {
   type SavedPositions,
   type TopologyResponse,
 } from "./api";
-import { Canvas, type CanvasHandle, type HoverPayload } from "./topology/Canvas";
+import {
+  Canvas,
+  type CanvasHandle,
+  type HoverPayload,
+  type Selection,
+} from "./topology/Canvas";
 import { DetailPanel } from "./panels/DetailPanel";
+import { EdgeDetail } from "./panels/EdgeDetail";
 import { Tooltip } from "./panels/Tooltip";
-import { tooltipFor } from "./panels/tooltips";
+import { tooltipFor, tooltipForEdge } from "./panels/tooltips";
+import { useConnectionStatus } from "./state/LiveContext";
 
 type LoadState =
   | { kind: "loading" }
@@ -23,7 +30,7 @@ export default function App() {
   const [savedPositions, setSavedPositions] = useState<SavedPositions>({});
   const [status, setStatus] = useState<string>("");
   const [statusKind, setStatusKind] = useState<"info" | "error">("info");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
   const [hover, setHover] = useState<HoverPayload | null>(null);
   const [canvasKey, setCanvasKey] = useState(0);
 
@@ -77,17 +84,22 @@ export default function App() {
     }
   }, [flash]);
 
-  // The Connections list calls this with the peer id; we both update the
-  // detail panel selection AND ask the canvas to highlight + center it.
+  // The Connections list and EdgeDetail's endpoint buttons call this
+  // with a peer node id. We both update selection AND ask the canvas to
+  // highlight + center it.
   const handleSelectFromPanel = useCallback((id: string) => {
-    setSelectedId(id);
+    setSelection({ kind: "node", id });
     canvasRef.current?.selectNode(id);
   }, []);
 
   const ready = topology.kind === "ready";
   const selectedNode =
-    ready && selectedId
-      ? topology.data.nodes.find((n) => n.id === selectedId) ?? null
+    ready && selection?.kind === "node"
+      ? topology.data.nodes.find((n) => n.id === selection.id) ?? null
+      : null;
+  const selectedEdge =
+    ready && selection?.kind === "edge"
+      ? topology.data.edges.find((e) => e.id === selection.id) ?? null
       : null;
 
   return (
@@ -115,23 +127,39 @@ export default function App() {
               ref={canvasRef}
               topology={topology.data}
               savedPositions={savedPositions}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+              selection={selection}
+              onSelect={setSelection}
               onHover={setHover}
             />
           )}
         </div>
-        {ready && (
+        {ready && selectedEdge ? (
+          <EdgeDetail
+            edge={selectedEdge}
+            nodes={topology.data.nodes}
+            onSelectNode={handleSelectFromPanel}
+          />
+        ) : ready ? (
           <DetailPanel
             selected={selectedNode}
             nodes={topology.data.nodes}
             edges={topology.data.edges}
             onSelect={handleSelectFromPanel}
           />
-        )}
+        ) : null}
       </main>
       <LegendBar />
-      {hover && <Tooltip text={tooltipFor(hover.node)} x={hover.pageX} y={hover.pageY} />}
+      {hover && (
+        <Tooltip
+          text={
+            hover.kind === "node"
+              ? tooltipFor(hover.node)
+              : tooltipForEdge(hover.edge)
+          }
+          x={hover.pageX}
+          y={hover.pageY}
+        />
+      )}
     </div>
   );
 }
@@ -167,6 +195,7 @@ function Header({
         </p>
       </div>
       <div className="flex items-center gap-4">
+        <ConnectionPill />
         {status && (
           <span
             role="status"
@@ -222,7 +251,7 @@ function LegendBar() {
   const items: Array<{ label: string; bg: string; border: string }> = [
     { label: "Application", bg: "#e6f4ea", border: "#15803d" },
     { label: "Overlay (NSX)", bg: "#dff5f0", border: "#0d9488" },
-    { label: "Physical (host/pNIC)", bg: "#eef2f7", border: "#1e3a8a" },
+    { label: "Physical (host/pNIC)", bg: "#e2e8f0", border: "#475569" },
     { label: "Underlay (switches/BGP)", bg: "#e0ecf6", border: "#1d4ed8" },
   ];
   return (
@@ -248,6 +277,35 @@ function LegendBar() {
         </span>
       ))}
     </footer>
+  );
+}
+
+function ConnectionPill() {
+  const status = useConnectionStatus();
+  const palette = {
+    connecting: { dot: "#f59e0b", text: "#92400e", bg: "#fef3c7", label: "Connecting…" },
+    connected: { dot: "#15803d", text: "#15803d", bg: "#e6f4ea", label: "Live" },
+    disconnected: { dot: "#b91c1c", text: "#b91c1c", bg: "#fee2e2", label: "Disconnected" },
+  }[status];
+  return (
+    <span
+      role="status"
+      aria-label={`Stream ${status}`}
+      title={`Stream ${status}`}
+      className="flex items-center gap-2 rounded-full px-3 py-1 text-base"
+      style={{ background: palette.bg, color: palette.text, fontWeight: 500 }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: 999,
+          background: palette.dot,
+        }}
+      />
+      {palette.label}
+    </span>
   );
 }
 

@@ -12,6 +12,7 @@ import { fetchConcept, type Concept, type TopoEdge, type TopoNode } from "../api
 import { conceptIdFor } from "./tooltips";
 import { Markdown } from "./Markdown";
 import { Connections } from "./Connections";
+import { LiveDataTab } from "./LiveDataTab";
 
 type Tab = "what" | "live" | "conns" | "context";
 
@@ -118,7 +119,7 @@ export function DetailPanel({ selected, nodes, edges, onSelect }: DetailPanelPro
             selectedId={selected.id}
           />
         )}
-        {tab === "live" && <PlaceholderTab milestone="M3" feature="live counters via WebSocket" />}
+        {tab === "live" && <LiveDataTab node={selected} />}
         {tab === "conns" && (
           <Connections selected={selected} nodes={nodes} edges={edges} onSelect={onSelect} />
         )}

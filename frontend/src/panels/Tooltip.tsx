@@ -13,6 +13,7 @@ interface TooltipProps {
 }
 
 export function Tooltip({ text, x, y }: TooltipProps) {
+  const lines = text.split("\n");
   return (
     <div
       role="tooltip"
@@ -32,7 +33,21 @@ export function Tooltip({ text, x, y }: TooltipProps) {
         boxShadow: "0 6px 20px rgba(15, 23, 42, 0.25)",
       }}
     >
-      {text}
+      {lines.map((line, i) => (
+        <div
+          key={i}
+          style={{
+            opacity: i === 0 ? 1 : 0.75,
+            fontFamily:
+              i > 0 && line.includes(" → ")
+                ? "ui-monospace, SFMono-Regular, Menlo, monospace"
+                : undefined,
+            marginTop: i > 0 ? 2 : 0,
+          }}
+        >
+          {line}
+        </div>
+      ))}
     </div>
   );
 }
