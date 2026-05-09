@@ -12,7 +12,9 @@
 import type cytoscape from "cytoscape";
 
 const LAYER_PALETTE = {
-  physical: { bg: "#eef2f7", border: "#1e3a8a", text: "#0f172a" },
+  // Physical = slate ("iron"). Distinct from blue underlay so the user
+  // can tell host/pNIC apart from switch/BGP at a glance.
+  physical: { bg: "#e2e8f0", border: "#475569", text: "#0f172a" },
   underlay: { bg: "#e0ecf6", border: "#1d4ed8", text: "#0f172a" },
   overlay: { bg: "#dff5f0", border: "#0d9488", text: "#0f172a" },
   application: { bg: "#e6f4ea", border: "#15803d", text: "#0f172a" },

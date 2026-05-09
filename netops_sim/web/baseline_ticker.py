@@ -31,6 +31,7 @@ _HEARTBEAT_INTERVAL = 3.0
 # (project, vpc, segment, etc.) don't get baseline counters — they have
 # no native equivalent until M4 introduces realization-state events.
 _COUNTER_TYPES = frozenset({
+    "switch",  # spines + ToRs — aggregate of all their ports
     "switch_port",
     "pnic",
     "tep",
@@ -150,11 +151,13 @@ class BaselineTicker:
                     "state": state,
                 })
 
-    @staticmethod
-    def _counter_band(etype: str) -> tuple[int, int]:
-        # Bytes-per-second bands by role. Switch ports and pNICs see
-        # higher throughput; VMs and Edge VMs see less; ESX hosts roll
-        # up — we approximate with a wider band.
+    def _counter_band(self, etype: str) -> tuple[int, int]:
+        # Bytes-per-second bands by role. Switches and ESX hosts roll up
+        # all their ports/pNICs — wider band to reflect that. Spines see
+        # more aggregate traffic than ToRs because every inter-rack flow
+        # crosses a spine.
+        if etype == "switch":
+            return 1_000_000, 8_000_000
         if etype in ("switch_port", "pnic"):
             return 50_000, 500_000
         if etype == "tep":

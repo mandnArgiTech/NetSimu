@@ -251,7 +251,7 @@ function LegendBar() {
   const items: Array<{ label: string; bg: string; border: string }> = [
     { label: "Application", bg: "#e6f4ea", border: "#15803d" },
     { label: "Overlay (NSX)", bg: "#dff5f0", border: "#0d9488" },
-    { label: "Physical (host/pNIC)", bg: "#eef2f7", border: "#1e3a8a" },
+    { label: "Physical (host/pNIC)", bg: "#e2e8f0", border: "#475569" },
     { label: "Underlay (switches/BGP)", bg: "#e0ecf6", border: "#1d4ed8" },
   ];
   return (

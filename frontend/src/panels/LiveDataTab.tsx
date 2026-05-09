@@ -15,6 +15,7 @@ import { useLiveEntity, useConnectionStatus, type CounterSample } from "../state
 import type { TopoNode } from "../api";
 
 const COUNTER_TYPES = new Set([
+  "switch", // spines + ToRs
   "switch_port",
   "pnic",
   "tep",
